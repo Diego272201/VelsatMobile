@@ -5,18 +5,18 @@ ENV ASPNETCORE_URLS=http://+:8080
 
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src
-COPY ["VelsatMobile/VelsatMobile.csproj", "VelsatMobile/"]
-COPY ["VelsatMobile.Data/VelsatMobile.Data.csproj", "VelsatMobile.Data/"]
-COPY ["VelsatMobile.Model/VelsatMobile.Model.csproj", "VelsatMobile.Model/"]
-RUN dotnet restore "VelsatMobile/VelsatMobile.csproj"
+COPY ["VelsatBackendAPI/VelsatBackendAPI.csproj", "VelsatBackendAPI/"]
+COPY ["VelsatBackendAPI.Data/VelsatBackendAPI.Data.csproj", "VelsatBackendAPI.Data/"]
+COPY ["VelsatBackendAPI.Model/VelsatBackendAPI.Model.csproj", "VelsatBackendAPI.Model/"]
+RUN dotnet restore "VelsatBackendAPI/VelsatBackendAPI.csproj"
 COPY . .
-WORKDIR "/src/VelsatMobile"
-RUN dotnet build "VelsatMobile.csproj" -c Release -o /app/build
+WORKDIR "/src/VelsatBackendAPI"
+RUN dotnet build "VelsatBackendAPI.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "VelsatMobile.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "VelsatBackendAPI.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "VelsatMobile.dll"]
+ENTRYPOINT ["dotnet", "VelsatBackendAPI.dll"]
