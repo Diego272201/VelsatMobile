@@ -11,9 +11,9 @@ namespace VelsatBackendAPI.Data.Repositories
     {
         Task<Account> GetDetails(string accountID, char tipo);
 
-        Task<bool> UpdateUser(Account account, string username, char tipo);
+        Task<bool> UpdateUser(Account account, char tipo);
 
-        Task<bool> UpdatePassword(string username, string password, char tipo);
+        Task<bool> UpdatePassword(string accountID, string password, char tipo);
 
         Task<Account> ValidateUser(string accountID, string password, char tipo);
     }

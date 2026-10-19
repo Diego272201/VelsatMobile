@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Org.BouncyCastle.Asn1.Ocsp;
 using VelsatBackendAPI.Data.Repositories;
+using VelsatMobile.Data.Repositories;
 
 namespace VelsatBackendAPI.Controllers
 {
@@ -9,17 +10,17 @@ namespace VelsatBackendAPI.Controllers
     [ApiController]
     public class ServerController : ControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IReadOnlyUnitOfWork _readOnlyUow;
 
-        public ServerController(IUnitOfWork unitOfWork)
+        public ServerController(IReadOnlyUnitOfWork readOnlyUow) // ✅ Cambiar
         {
-            _unitOfWork = unitOfWork;
+            _readOnlyUow = readOnlyUow;
         }
 
         [HttpGet("MobileServer/{accountID}")]
         public async Task<IActionResult> GetServidor(string accountID)
         {
-            var server = await _unitOfWork.ServidorRepository.GetServidor(accountID);
+            var server = await _readOnlyUow.ServidorRepository.GetServidor(accountID);
 
             if (server == null)
             {

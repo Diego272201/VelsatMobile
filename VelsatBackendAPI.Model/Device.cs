@@ -22,7 +22,5 @@ namespace VelsatBackendAPI.Model
         public string? Codgeoact { get; set; }
         public string? Rutaact { get; set; }
         public string? Servicio { get; set; }
-        public Geocercausu? DatosGeocercausu { get; set; }
-
     }
 }

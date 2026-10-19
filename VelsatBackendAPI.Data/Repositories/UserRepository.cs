@@ -1,10 +1,6 @@
-﻿using Dapper;
-using MySql.Data.MySqlClient;
+using Dapper;
 using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using VelsatBackendAPI.Model;
 
@@ -12,55 +8,67 @@ namespace VelsatBackendAPI.Data.Repositories
 {
     public class UserRepository : IUserRepository
     {
-        private readonly IDbConnection _defaultConnection; IDbTransaction _defaultTransaction;
+        private readonly IDbConnection _defaultConnection;
+        private readonly IDbTransaction _defaultTransaction;
 
-        public UserRepository(IDbConnection defaultconnection, IDbTransaction defaulttransaction)
+        public UserRepository(IDbConnection defaultConnection, IDbTransaction defaultTransaction)
         {
-            _defaultConnection = defaultconnection;
-            _defaultTransaction = defaulttransaction;
+            _defaultConnection = defaultConnection;
+            _defaultTransaction = defaultTransaction;
         }
-
-        /* private readonly MySqlConfiguration _configuration;
-         public UserRepository(MySqlConfiguration configuration)
-         {
-             _configuration = configuration;
-         }
-
-         protected MySqlConnection dbconnection()
-         {
-             return new MySqlConnection(_configuration.ConnectionString);
-         }*/
 
         public async Task<Account> GetDetails(string accountID, char tipo)
         {
             string sql = tipo switch
             {
-                'n' => @"SELECT description, ruc, contactEmail, contactPhone FROM usuarios WHERE accountID = @AccountID",
+                'n' => @"
+                    SELECT description, ruc, contactEmail, contactPhone
+                    FROM usuarios
+                    WHERE accountID = @AccountID",
 
-                'p' => @"SELECT apellidos, dni, telefono, codlan, empresa FROM cliente WHERE codlan = @AccountID",
+                'p' => @"
+                    SELECT apellidos, dni, telefono, codlan, empresa
+                    FROM cliente
+                    WHERE codlan = @AccountID",
 
-                'c' => @"SELECT apellidos, nombres, dni, telefono, login FROM taxi WHERE login = @AccountID",
+                'c' or 'r' or 't' => @"
+                    SELECT apellidos, nombres, dni, telefono, login
+                    FROM taxi
+                    WHERE login = @AccountID",
 
                 _ => throw new ArgumentException("Tipo de usuario no válido", nameof(tipo))
             };
 
-            return await _defaultConnection.QueryFirstOrDefaultAsync<Account>(sql, new { AccountID = accountID });
+            return await _defaultConnection.QueryFirstOrDefaultAsync<Account>(
+                sql,
+                new { AccountID = accountID },
+                transaction: _defaultTransaction); // ✅ Agregar transaction
         }
 
-        public async Task<bool> UpdateUser(Account account, string username, char tipo)
+        public async Task<bool> UpdateUser(Account account, char tipo)
         {
             string sql = tipo switch
             {
-                'n' => @"UPDATE usuarios SET description = @Description, contactEmail = @ContactEmail, contactPhone = @ContactPhone WHERE accountID = @AccountID",
+                'n' => @"
+                    UPDATE usuarios
+                    SET description = @Description, contactEmail = @ContactEmail,
+                        contactPhone = @ContactPhone
+                    WHERE accountID = @AccountID",
 
-                'p' => @"UPDATE cliente SET apellidos = @Apellidos, codlan = @Codlan, telefono = @Telefono WHERE codlan = @AccountID",
+                'p' => @"
+                    UPDATE cliente
+                    SET apellidos = @Apellidos, codlan = @Codlan, telefono = @Telefono
+                    WHERE codlan = @AccountID",
 
-                'c' => @"UPDATE taxi SET apellidos = @Apellidos, login = @Login, telefono = @Telefono WHERE login = @AccountID",
+                'c' or 't' => @"
+                    UPDATE taxi
+                    SET apellidos = @Apellidos, login = @Login, telefono = @Telefono, nombres = NULL
+                    WHERE login = @AccountID",
 
                 _ => throw new ArgumentException("Tipo de usuario no válido", nameof(tipo))
             };
 
-            var parametres = new
+            var parameters = new
             {
                 Description = account.Description,
                 ContactEmail = account.ContactEmail,
@@ -69,11 +77,15 @@ namespace VelsatBackendAPI.Data.Repositories
                 Codlan = account.Codlan,
                 Telefono = account.Telefono,
                 Login = account.Login,
-                AccountID = username,
+                AccountID = account.AccountID
             };
 
-            var rowsAffected = await _defaultConnection.ExecuteAsync(sql, parametres);
+            var rowsAffected = await _defaultConnection.ExecuteAsync(
+                sql,
+                parameters,
+                transaction: _defaultTransaction); // ✅ Agregar transaction
 
+            // ❌ NO hacer commit aquí - lo hace el controlador
             return rowsAffected > 0;
         }
 
@@ -82,46 +94,55 @@ namespace VelsatBackendAPI.Data.Repositories
             string sql = tipo switch
             {
                 'n' => @"UPDATE usuarios SET password = @Password WHERE accountID = @AccountID",
-
                 'p' => @"UPDATE cliente SET clave = @Clave WHERE codlan = @AccountID",
-
-                'c' => @"UPDATE taxi SET clave = @Clave WHERE login = @AccountID",
-
+                'c' or 't' => @"UPDATE taxi SET clave = @Clave WHERE login = @AccountID",
                 _ => throw new ArgumentException("Tipo de usuario no válido", nameof(tipo))
             };
 
-            var parametres = new
+            var parameters = new
             {
                 AccountID = username,
                 Password = password,
                 Clave = password
             };
 
-            var rowsAffected = await _defaultConnection.ExecuteAsync(sql, parametres);
+            var rowsAffected = await _defaultConnection.ExecuteAsync(
+                sql,
+                parameters,
+                transaction: _defaultTransaction); // ✅ Agregar transaction
 
+            // ❌ NO hacer commit aquí - lo hace el controlador
             return rowsAffected > 0;
         }
 
         public async Task<Account> ValidateUser(string login, string clave, char tipo)
         {
-            string sql;
-
-            switch (tipo)
+            string sql = tipo switch
             {
-                case 'n':
-                    sql = "SELECT accountID, password, description FROM usuarios WHERE accountID = @Login AND password = @Clave";
-                    break;
-                case 'p':
-                    sql = "SELECT codcliente as Codigo, codlan as AccountID, clave as Password, apellidos as Description FROM cliente WHERE codlan = @Login AND clave = @Clave";
-                    break;
-                case 'c':
-                    sql = "SELECT codtaxi as Codigo, login as AccountID, clave as Password, CONCAT(apellidos, ' ', nombres) as Description FROM taxi WHERE login = @Login AND clave = @Clave";
-                    break;
-                default:
-                    throw new ArgumentException("Tipo de usuario no válido", nameof(tipo));
-            }
+                'n' => @"
+                    SELECT accountID, password, description
+                    FROM usuarios
+                    WHERE accountID = @Login AND password = @Clave",
 
-            return await _defaultConnection.QueryFirstOrDefaultAsync<Account>(sql, new { Login = login, Clave = clave });
+                'p' => @"
+                    SELECT codcliente AS Codigo, codlan AS AccountID, clave AS Password,
+                           apellidos AS Description
+                    FROM cliente
+                    WHERE codlan = @Login AND clave = @Clave AND estadocuenta = 'A'",
+
+                'c' => @"
+                    SELECT codtaxi AS Codigo, login AS AccountID, clave AS Password,
+                           CONCAT(apellidos, ' ', nombres) AS Description
+                    FROM taxi
+                    WHERE login = @Login AND clave = @Clave AND estado = 'A'",
+
+                _ => throw new ArgumentException("Tipo de usuario no válido", nameof(tipo))
+            };
+
+            return await _defaultConnection.QueryFirstOrDefaultAsync<Account>(
+                sql,
+                new { Login = login, Clave = clave },
+                transaction: _defaultTransaction); // ✅ Agregar transaction
         }
     }
 }

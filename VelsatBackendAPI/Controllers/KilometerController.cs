@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using VelsatBackendAPI.Data.Repositories;
 using VelsatBackendAPI.Model;
+using VelsatMobile.Data.Repositories;
 
 namespace VelsatBackendAPI.Controllers
 {
@@ -11,30 +12,54 @@ namespace VelsatBackendAPI.Controllers
     public class KilometerController : ControllerBase
     {
 
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IReadOnlyUnitOfWork _readOnlyUow; // ✅ Cambiar a ReadOnly
 
-        public KilometerController(IUnitOfWork unitOfWork)
+        public KilometerController(IReadOnlyUnitOfWork readOnlyUow) // ✅ Cambiar
         {
-            _unitOfWork = unitOfWork;
-
+            _readOnlyUow = readOnlyUow;
         }
+
         [HttpGet("kilometer/{fechaini}/{fechafin}/{deviceID}/{accountID}")]
-        public IActionResult GetReportingKilometer(string fechaini, string fechafin, string deviceID, string accountID)
+        public async Task<IActionResult> GetReportingKilometer(string fechaini, string fechafin, string deviceID, string accountID)
         {
-            return Ok(_unitOfWork.KilometrosRepository.GetKmReporting(fechaini, fechafin, deviceID, accountID));
+
+            var result = await _readOnlyUow.KilometrosRepository.GetKmReporting(fechaini, fechafin, deviceID, accountID);
+            return Ok(result);
+
         }
 
         [HttpGet("downloadExcelK/{fechaini}/{fechafin}/{deviceID}/{accountID}")]
         public async Task<IActionResult> DownloadExcelK(string fechaini, string fechafin, string deviceID, string accountID)
         {
 
-            var datos = await _unitOfWork.KilometrosRepository.GetKmReporting(fechaini, fechafin, deviceID, accountID);
+            var datos = await _readOnlyUow.KilometrosRepository.GetKmReporting(fechaini, fechafin, deviceID, accountID);
 
             var excelBytes = ConvertKilometerDataExcel(datos.ListaKilometros, fechaini, fechafin, deviceID);
             string fileName = $"reporte_kilometros_gps.xlsx";
 
+            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+
+        }
+
+        [HttpGet("kilometerall/{fechaini}/{fechafin}/{accountID}")]
+        public async Task<IActionResult> GetAllKilometer(string fechaini, string fechafin, string accountID)
+        {
+
+            var result = await _readOnlyUow.KilometrosRepository.GetAllKmReporting(fechaini, fechafin, accountID);
+            return Ok(result);
+
+        }
+
+        [HttpGet("downloadExcelKall/{fechaini}/{fechafin}/{accountID}")]
+        public async Task<IActionResult> DownloadExcelKall(string fechaini, string fechafin, string accountID)
+        {
+
+            var datos = await _readOnlyUow.KilometrosRepository.GetAllKmReporting(fechaini, fechafin, accountID);
+            var excelBytes = ConvertKilometerAllExcel(datos.ListaKilometros, fechaini, fechafin, accountID);
+            string fileName = $"reporte_kilometros_gps.xlsx";
 
             return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+
         }
 
         private byte[] ConvertKilometerDataExcel(List<KilometrosRecorridos> datos, string fechaini, string fechafin, string deviceID)
@@ -190,25 +215,6 @@ namespace VelsatBackendAPI.Controllers
                     return stream.ToArray();
                 }
             }
-        }
-
-        [HttpGet("kilometerall/{fechaini}/{fechafin}/{accountID}")]
-        public IActionResult GetAllKilometer(string fechaini, string fechafin, string accountID)
-        {
-            return Ok(_unitOfWork.KilometrosRepository.GetAllKmReporting(fechaini, fechafin, accountID));
-        }
-
-        [HttpGet("downloadExcelKall/{fechaini}/{fechafin}/{accountID}")]
-        public async Task<IActionResult> DownloadExcelKall(string fechaini, string fechafin, string accountID)
-        {
-
-            var datos = await _unitOfWork.KilometrosRepository.GetAllKmReporting(fechaini, fechafin, accountID);
-
-            var excelBytes = ConvertKilometerAllExcel(datos.ListaKilometros, fechaini, fechafin, accountID);
-            string fileName = $"reporte_kilometros_gps.xlsx";
-
-
-            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
         }
 
         private byte[] ConvertKilometerAllExcel(List<KilometrosRecorridos> listaKilometros, string fechaini, string fechafin, string accountID)

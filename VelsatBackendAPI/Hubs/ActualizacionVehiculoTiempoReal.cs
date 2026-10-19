@@ -1,19 +1,25 @@
 ﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using VelsatBackendAPI.Data.Repositories;
-using VelsatBackendAPI.Model;
 
 namespace VelsatBackendAPI.Hubs
 {
     public class ActualizacionVehiculoTiempoReal : Hub
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly IHubContext<ActualizacionVehiculoTiempoReal> _hubContext;
         private static readonly Dictionary<string, Timer> _vehicleTimers = new Dictionary<string, Timer>();
         private static readonly object _lockObject = new object();
 
-        public ActualizacionVehiculoTiempoReal(IUnitOfWork unitOfWork, IHubContext<ActualizacionVehiculoTiempoReal> hubContext)
+        public ActualizacionVehiculoTiempoReal(
+            IServiceScopeFactory serviceScopeFactory,
+            IHubContext<ActualizacionVehiculoTiempoReal> hubContext)
         {
-            _unitOfWork = unitOfWork;
+            _serviceScopeFactory = serviceScopeFactory;
             _hubContext = hubContext;
         }
 
@@ -186,32 +192,37 @@ namespace VelsatBackendAPI.Hubs
 
         private async Task EnviarDatosVehiculo(string username, string placa)
         {
-            try
+            using (var scope = _serviceScopeFactory.CreateScope())
             {
-                Console.WriteLine($"[DEBUG] Obteniendo datos del vehículo {placa} para usuario: {username}");
-
-                // Llamar al método que obtendrá los datos de un vehículo específico
-                var datosVehiculo = await _unitOfWork.DatosCargainicialService.ObtenerDatosVehiculoAsync(username, placa);
-
-                datosVehiculo.FechaActual = DateTime.Now;
-
-                Console.WriteLine($"[DEBUG] Datos obtenidos del vehículo {placa}");
-
-                // Enviar datos al grupo específico username_placa
-                var groupKey = $"{username}_{placa}";
-                await _hubContext.Clients.Group(groupKey).SendAsync("ActualizarDatosVehiculo", datosVehiculo);
-
-                Console.WriteLine($"[DEBUG] Datos enviados exitosamente para vehículo: {placa}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ERROR] Error enviando datos del vehículo {placa}: {ex.Message}");
-
-                // Si hay error, detener el timer para evitar spam de errores
-                if (ex.Message.Contains("disposed") || ex.Message.Contains("ObjectDisposed"))
+                try
                 {
-                    Console.WriteLine($"[WARNING] Deteniendo timer para vehículo {placa} debido a disposed objects");
-                    DetenerTimerVehiculo(username, placa);
+                    Console.WriteLine($"[DEBUG] Obteniendo datos del vehículo {placa} para usuario: {username}");
+
+                    var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+                    var datosVehiculo = await unitOfWork.DatosCargainicialService
+                        .ObtenerDatosVehiculoAsync(username, placa);
+
+                    datosVehiculo.FechaActual = DateTime.Now;
+
+                    Console.WriteLine($"[DEBUG] Datos obtenidos del vehículo {placa}");
+
+                    // Enviar datos al grupo específico username_placa
+                    var groupKey = $"{username}_{placa}";
+                    await _hubContext.Clients.Group(groupKey).SendAsync("ActualizarDatosVehiculo", datosVehiculo);
+
+                    Console.WriteLine($"[DEBUG] Datos enviados exitosamente para vehículo: {placa}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] Error enviando datos del vehículo {placa}: {ex.Message}");
+
+                    // Si hay error, detener el timer para evitar spam de errores
+                    if (ex.Message.Contains("disposed") || ex.Message.Contains("ObjectDisposed"))
+                    {
+                        Console.WriteLine($"[WARNING] Deteniendo timer para vehículo {placa} debido a disposed objects");
+                        DetenerTimerVehiculo(username, placa);
+                    }
                 }
             }
         }

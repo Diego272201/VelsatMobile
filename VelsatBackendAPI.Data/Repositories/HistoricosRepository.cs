@@ -19,20 +19,23 @@ namespace VelsatBackendAPI.Data.Repositories
         private readonly IDbConnection _defaultConnection;
         private readonly IDbConnection _secondConnection;
         private readonly IDbTransaction _defaultTransaction;
+        private readonly IDbTransaction _secondTransaction;
 
-        public HistoricosRepository(IDbConnection defaultConnection, IDbConnection secondConnection, IDbTransaction defaulttransaction)
+        public HistoricosRepository(IDbConnection defaultConnection, IDbConnection secondConnection, IDbTransaction defaulttransaction, IDbTransaction secondTransaction)
         {
             _defaultConnection = defaultConnection;
             _secondConnection = secondConnection;
             _defaultTransaction = defaulttransaction;
-
+            _secondTransaction = secondTransaction;
         }
 
         public async Task<DatosReporting> GetDataReporting(string fechaini, string fechafin, string deviceID, string accountID)
         {
-            // Paso 1: Buscar accountID en device
             const string sqlAccountFromDevice = "SELECT accountID FROM device WHERE deviceID = @DeviceID";
-            var newAccountID =  _defaultConnection.QueryFirstOrDefault<string>(sqlAccountFromDevice, new { DeviceID = deviceID }, transaction: _defaultTransaction);
+            var newAccountID = _defaultConnection.QueryFirstOrDefault<string>(
+                sqlAccountFromDevice,
+                new { DeviceID = deviceID },
+                transaction: _defaultTransaction);
 
             if (!string.IsNullOrEmpty(newAccountID))
             {
@@ -40,8 +43,6 @@ namespace VelsatBackendAPI.Data.Repositories
             }
             else
             {
-
-                // Validar que tengamos un accountID válido
                 if (string.IsNullOrEmpty(accountID))
                 {
                     return new DatosReporting
@@ -59,9 +60,12 @@ namespace VelsatBackendAPI.Data.Repositories
 
             if (numdias <= 3)
             {
-                const string sql = "select tabla from historicos where timeini<=@FechafinUnix and timefin>=@FechainiUnix";
+                const string sql = "SELECT tabla FROM historicos WHERE timeini <= @FechafinUnix AND timefin >= @FechainiUnix";
 
-                var nombresTablas = _defaultConnection.Query<Historicos>(sql, new { FechainiUnix = resultadoDias.UnixFechaInicio, FechafinUnix = resultadoDias.UnixFechaFin }, transaction: _defaultTransaction).ToList();
+                var nombresTablas = _defaultConnection.Query<Historicos>(
+                    sql,
+                    new { FechainiUnix = resultadoDias.UnixFechaInicio, FechafinUnix = resultadoDias.UnixFechaFin },
+                    transaction: _defaultTransaction).ToList();
 
                 var datosReporting = new DatosReporting
                 {
@@ -70,39 +74,45 @@ namespace VelsatBackendAPI.Data.Repositories
 
                 if (nombresTablas.Count == 0)
                 {
-                    // Si no se encontraron nombres de tablas, consultamos directamente la tabla "eventdata"
                     string sqlEventData = @"
-                        SELECT deviceID, timestamp, speedKPH, longitude, latitude, odometerKM, address 
-                         FROM eventdata 
-                            WHERE accountID = @AccountID AND deviceID = @DeviceID AND timestamp BETWEEN @FechainiUnix AND @FechafinUnix
-                                ORDER BY timestamp";
+                        SELECT deviceID, timestamp, speedKPH, longitude, latitude, odometerKM, address
+                        FROM eventdata
+                        WHERE accountID = @AccountID
+                          AND deviceID = @DeviceID
+                          AND timestamp BETWEEN @FechainiUnix AND @FechafinUnix
+                        ORDER BY timestamp";
 
-                    datosReporting.ListaTablas = _defaultConnection.Query<TablasReporting>(sqlEventData, new { AccountID = accountID,  DeviceID = deviceID, FechainiUnix = resultadoDias.UnixFechaInicio, FechafinUnix = resultadoDias.UnixFechaFin }, transaction: _defaultTransaction).ToList();
+                    datosReporting.ListaTablas = _defaultConnection.Query<TablasReporting>(
+                        sqlEventData,
+                        new { AccountID = accountID, DeviceID = deviceID, FechainiUnix = resultadoDias.UnixFechaInicio, FechafinUnix = resultadoDias.UnixFechaFin },
+                        transaction: _defaultTransaction).ToList();
 
                     for (int i = 0; i < datosReporting.ListaTablas.Count; i++)
                     {
                         datosReporting.ListaTablas[i].Item = i + 1;
                     }
-
                 }
-
                 else
-
                 {
                     foreach (var nombreTabla in nombresTablas)
                     {
                         string consultaTabla = nombreTabla.Tabla;
 
                         string sqlR = $@"
-                           SELECT deviceID, timestamp, speedKPH, longitude, latitude, odometerKM, address 
-                                FROM {consultaTabla} 
-                                    WHERE accountID = @AccountID AND deviceID = @DeviceID AND timestamp BETWEEN @FechainiUnix AND @FechafinUnix
-                                      ORDER BY timestamp";
+                            SELECT deviceID, timestamp, speedKPH, longitude, latitude, odometerKM, address 
+                            FROM {consultaTabla} 
+                            WHERE accountID = @AccountID 
+                              AND deviceID = @DeviceID 
+                              AND timestamp BETWEEN @FechainiUnix AND @FechafinUnix
+                            ORDER BY timestamp";
 
-                        var datosTabla = _secondConnection.Query<TablasReporting>(sqlR, new { AccountID = accountID, DeviceID = deviceID, FechainiUnix = resultadoDias.UnixFechaInicio, FechafinUnix = resultadoDias.UnixFechaFin }, transaction: _defaultTransaction).ToList();
+                        // ✅ USAR _secondTransaction aquí
+                        var datosTabla = _secondConnection.Query<TablasReporting>(
+                            sqlR,
+                            new { AccountID = accountID, DeviceID = deviceID, FechainiUnix = resultadoDias.UnixFechaInicio, FechafinUnix = resultadoDias.UnixFechaFin },
+                            transaction: _secondTransaction).ToList(); // ✅ CAMBIAR aquí
 
                         datosReporting.ListaTablas.AddRange(datosTabla);
-
                     }
 
                     for (int i = 0; i < datosReporting.ListaTablas.Count; i++)
@@ -115,7 +125,7 @@ namespace VelsatBackendAPI.Data.Repositories
                 {
                     return new DatosReporting
                     {
-                        Mensaje = "No se encontro datos disponible en el rango de fechas ingresado"
+                        Mensaje = "No se encontró datos disponible en el rango de fechas ingresado"
                     };
                 }
 
@@ -125,7 +135,7 @@ namespace VelsatBackendAPI.Data.Repositories
             {
                 return new DatosReporting
                 {
-                    Mensaje = "La diferencia entre las fechas es mayor a 3 días; seleccione otra fechas"
+                    Mensaje = "La diferencia entre las fechas es mayor a 3 días; seleccione otras fechas"
                 };
             }
         }
@@ -398,7 +408,7 @@ namespace VelsatBackendAPI.Data.Repositories
 
             var parameters = new { Rutadefault = rutadefault };
 
-            var result = await _defaultConnection.QueryAsync<string>(sql, parameters);
+            var result = await _defaultConnection.QueryAsync<string>(sql, parameters, transaction: _defaultTransaction);
 
             return result.ToList();
         }

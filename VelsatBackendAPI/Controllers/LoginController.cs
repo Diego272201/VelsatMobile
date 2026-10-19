@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Text;
 using VelsatBackendAPI.Data.Repositories;
 using VelsatBackendAPI.Model;
+using VelsatMobile.Data.Repositories;
 
 namespace VelsatBackendAPI.Controllers
 {
@@ -13,19 +14,15 @@ namespace VelsatBackendAPI.Controllers
     [ApiController]
     public class LoginController : ControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IReadOnlyUnitOfWork _readOnlyUow;
         private readonly string secretkey;
 
-        // ← ELIMINAR: IHubContext<ActualizacionTiempoReal> _hubContext
-        // ← ELIMINAR: Dictionary<string, Timer> userTimers
-
-        public LoginController(IUnitOfWork unitOfWork, IConfiguration config)
+        public LoginController(IReadOnlyUnitOfWork readOnlyUow, IConfiguration config)
         {
-            _unitOfWork = unitOfWork;
+            _readOnlyUow = readOnlyUow;
             secretkey = config.GetSection("settings").GetSection("secretkey").Value;
-
-            // ← ELIMINAR: _hubContext = hubContext;
         }
+
         [HttpPost("MobileLogin")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
@@ -40,7 +37,7 @@ namespace VelsatBackendAPI.Controllers
                 return BadRequest("Tipo de usuario no válido");
             }
 
-            var account = await _unitOfWork.UserRepository.ValidateUser(request.Login, request.Clave, request.Tipo);
+            var account = await _readOnlyUow.UserRepository.ValidateUser(request.Login, request.Clave, request.Tipo);
 
             if (account != null)
             {

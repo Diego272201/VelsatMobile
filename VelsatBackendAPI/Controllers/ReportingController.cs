@@ -1,15 +1,16 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using ClosedXML.Excel;
+using ClosedXML.Excel.Drawings;
+using DocumentFormat.OpenXml.Drawing.ChartDrawing;
+using DocumentFormat.OpenXml.Spreadsheet;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
-using VelsatBackendAPI.Data.Repositories;
 using System.Data;
-using VelsatBackendAPI.Model;
-using ClosedXML.Excel;
-using DocumentFormat.OpenXml.Spreadsheet;
-using DocumentFormat.OpenXml.Drawing.ChartDrawing;
-using ClosedXML.Excel.Drawings;
 using System.Drawing;
+using VelsatBackendAPI.Data.Repositories;
 using VelsatBackendAPI.Data.Services;
+using VelsatBackendAPI.Model;
+using VelsatMobile.Data.Repositories;
 
 namespace VelsatBackendAPI.Controllers
 {
@@ -18,30 +19,45 @@ namespace VelsatBackendAPI.Controllers
 
     public class ReportingController : ControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IReadOnlyUnitOfWork _readOnlyUow;
 
-        public ReportingController(IUnitOfWork unitOfWork)
+        public ReportingController(IReadOnlyUnitOfWork readOnlyUow) // ✅ Cambiar
         {
-            _unitOfWork = unitOfWork;
+            _readOnlyUow = readOnlyUow;
         }
 
         //Reporte general y excel
         [HttpGet("general/{fechaini}/{fechafin}/{deviceID}/{accountID}")]
         public IActionResult GetDataReporting(string fechaini, string fechafin, string deviceID, string accountID)
         {
-            return Ok(_unitOfWork.HistoricosRepository.GetDataReporting(fechaini, fechafin, deviceID, accountID));
+            try
+            {
+                var resultado = _readOnlyUow.HistoricosRepository.GetDataReporting(fechaini, fechafin, deviceID, accountID);
+                return Ok(resultado);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al obtener los datos del reporte general", error = ex.Message });
+            }
         }
 
         [HttpGet("downloadExcelG/{fechaini}/{fechafin}/{deviceID}/{accountID}")]
         public async Task<IActionResult> DownloadExcelG(string fechaini, string fechafin, string deviceID, string accountID)
         {
-            var datos = await _unitOfWork.HistoricosRepository.GetDataReporting(fechaini, fechafin, deviceID, accountID);
+            try
+            {
+                var datos = await _readOnlyUow.HistoricosRepository.GetDataReporting(fechaini, fechafin, deviceID, accountID);
 
-            var user = _unitOfWork.HistoricosRepository.UserName(deviceID);
-            var excelBytes = ConvertDataExcel(datos.ListaTablas, fechaini, fechafin, deviceID, user);
-            string fileName = $"reporte_general_gps_{deviceID}.xlsx";
+                var user = _readOnlyUow.HistoricosRepository.UserName(deviceID);
+                var excelBytes = ConvertDataExcel(datos.ListaTablas, fechaini, fechafin, deviceID, user);
+                string fileName = $"reporte_general_gps_{deviceID}.xlsx";
 
-            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+                return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al generar el archivo Excel", error = ex.Message });
+            }
         }
 
         private byte[] ConvertDataExcel(List<TablasReporting> datos, string fechaini, string fechafin, string deviceID, string user)
@@ -240,21 +256,35 @@ namespace VelsatBackendAPI.Controllers
         [HttpGet("speed/{fechaini}/{fechafin}/{deviceId}/{speedKPH}/{accountID}")]
         public IActionResult GetDataSpeed(string fechaini, string fechafin, string deviceId, double speedKPH, string accountID)
         {
-            return Ok(_unitOfWork.HistoricosRepository.GetSpeedData(fechaini, fechafin, deviceId, speedKPH, accountID));
+            try
+            {
+                var resultado = _readOnlyUow.HistoricosRepository.GetSpeedData(fechaini, fechafin, deviceId, speedKPH, accountID);
+                return Ok(resultado);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al obtener los datos de velocidad", error = ex.Message });
+            }
         }
 
         //Datos de las velocidades y excel
         [HttpGet("downloadExcelV/{fechaini}/{fechafin}/{deviceId}/{speedKPH}/{accountID}")]
         public async Task<IActionResult> DownloadExcelV(string fechaini, string fechafin, string deviceId, double speedKPH, string accountID)
         {
-            var datos = await _unitOfWork.HistoricosRepository.GetSpeedData(fechaini, fechafin, deviceId, speedKPH, accountID);
+            try
+            {
+                var datos = await _readOnlyUow.HistoricosRepository.GetSpeedData(fechaini, fechafin, deviceId, speedKPH, accountID);
 
-            var user = _unitOfWork.HistoricosRepository.UserName(deviceId);
-            var excelBytes = ConvertSpeedDataExcel(datos, fechaini, fechafin, deviceId, user);
-            string fileName = $"reporte_velocidad_gps_{deviceId}.xlsx";
+                var user = _readOnlyUow.HistoricosRepository.UserName(deviceId);
+                var excelBytes = ConvertSpeedDataExcel(datos, fechaini, fechafin, deviceId, user);
+                string fileName = $"reporte_velocidad_gps_{deviceId}.xlsx";
 
-
-            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+                return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al generar el archivo Excel de velocidad", error = ex.Message });
+            }
         }
 
         private byte[] ConvertSpeedDataExcel(List<SpeedReporting> speedData, string fechaini, string fechafin, string deviceId, string user)
@@ -457,21 +487,35 @@ namespace VelsatBackendAPI.Controllers
         [HttpGet("stops/{fechaini}/{fechafin}/{deviceId}/{accountID}")]
         public IActionResult GetDataStops(string fechaini, string fechafin, string deviceId, string accountID)
         {
-            return Ok(_unitOfWork.HistoricosRepository.GetStopData(fechaini, fechafin, deviceId, accountID));
+            try
+            {
+                var resultado = _readOnlyUow.HistoricosRepository.GetStopData(fechaini, fechafin, deviceId, accountID);
+                return Ok(resultado);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al obtener los datos de paradas", error = ex.Message });
+            }
         }
 
         [HttpGet("downloadExcelS/{fechaini}/{fechafin}/{deviceID}/{accountID}")]
         public async Task<IActionResult> DownloadExcelS(string fechaini, string fechafin, string deviceID, string accountID)
         {
 
-            var datos = await _unitOfWork.HistoricosRepository.GetStopData(fechaini, fechafin, deviceID, accountID);
+            try
+            {
+                var datos = await _readOnlyUow.HistoricosRepository.GetStopData(fechaini, fechafin, deviceID, accountID);
 
-            var user = _unitOfWork.HistoricosRepository.UserName(deviceID);
-            var excelBytes = ConvertStopDataExcel(datos, fechaini, fechafin, deviceID, user);
-            string fileName = $"reporte_paradas_gps_{deviceID}.xlsx";
+                var user = _readOnlyUow.HistoricosRepository.UserName(deviceID);
+                var excelBytes = ConvertStopDataExcel(datos, fechaini, fechafin, deviceID, user);
+                string fileName = $"reporte_paradas_gps_{deviceID}.xlsx";
 
-
-            return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+                return File(excelBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al generar el archivo Excel de paradas", error = ex.Message });
+            }
         }
 
         private byte[] ConvertStopDataExcel(List<StopsReporting> stopsData, string fechaini, string fechafin, string deviceId, string user)
@@ -672,7 +716,15 @@ namespace VelsatBackendAPI.Controllers
         [HttpGet("details/{fechaini}/{fechafin}/{deviceId}/{accountID}")]
         public IActionResult GetRouteDetails(string fechaini, string fechafin, string deviceId, string accountID)
         {
-            return Ok(_unitOfWork.HistoricosRepository.GetRouteDetails(fechaini, fechafin, deviceId, accountID));
+            try
+            {
+                var result = _readOnlyUow.HistoricosRepository.GetRouteDetails(fechaini, fechafin, deviceId, accountID);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al obtener los detalles de ruta", error = ex.Message });
+            }
         }
 
         [HttpGet("filtersedapal")]
@@ -681,12 +733,19 @@ namespace VelsatBackendAPI.Controllers
             if (string.IsNullOrEmpty(rutadefault))
                 return BadRequest("El parámetro 'rutadefault' es requerido.");
 
-            var devices = await _unitOfWork.HistoricosRepository.DeviceFilterSedapal(rutadefault);
+            try
+            {
+                var devices = await _readOnlyUow.HistoricosRepository.DeviceFilterSedapal(rutadefault);
 
-            if (devices == null || !devices.Any())
-                return NotFound("No se encontraron dispositivos para la ruta especificada.");
+                if (devices == null || !devices.Any())
+                    return NotFound("No se encontraron dispositivos para la ruta especificada.");
 
-            return Ok(devices);
+                return Ok(devices);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al obtener los dispositivos filtrados", error = ex.Message });
+            }
         }
     }
 }

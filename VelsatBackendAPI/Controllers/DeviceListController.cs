@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using VelsatBackendAPI.Data.Repositories;
 using VelsatBackendAPI.Model;
+using VelsatMobile.Data.Repositories;
 
 namespace VelsatBackendApi.Controllers
 {
@@ -10,11 +11,11 @@ namespace VelsatBackendApi.Controllers
     //[Authorize]
     public class DeviceListController : ControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IReadOnlyUnitOfWork _readOnlyUow;  // ✅ Para GET
 
-        public DeviceListController(IUnitOfWork unitOfWork)
+        public DeviceListController(IReadOnlyUnitOfWork readOnlyUow)
         {
-            _unitOfWork = unitOfWork;
+            _readOnlyUow = readOnlyUow;
         }
 
         [HttpGet("{username}")]
@@ -28,7 +29,7 @@ namespace VelsatBackendApi.Controllers
 
         private async Task<DatosCargainicial> ObtenerDatosCargaDesdeBD(string username)
         {
-            var datosCargaInicial = await _unitOfWork.DatosCargainicialService.ObtenerDatosCargaInicialAsync(username);
+            var datosCargaInicial = await _readOnlyUow.DatosCargainicialService.ObtenerDatosCargaInicialAsync(username);
             return datosCargaInicial;
         }
 
@@ -36,7 +37,7 @@ namespace VelsatBackendApi.Controllers
         [HttpGet("simplified/{username}")]
         public async Task<IActionResult> SimplifiedList(string username)
         {
-            var datosCargaInicial = await _unitOfWork.DatosCargainicialService.SimplifiedList(username);
+            var datosCargaInicial = await _readOnlyUow.DatosCargainicialService.SimplifiedList(username);
             return Ok(datosCargaInicial);
         }
     }

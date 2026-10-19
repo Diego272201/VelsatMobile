@@ -1,19 +1,25 @@
 ﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using VelsatBackendAPI.Data.Repositories;
-using VelsatBackendAPI.Model;
 
 namespace VelsatBackendAPI.Hubs
 {
     public class ActualizacionTiempoReal : Hub
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly IHubContext<ActualizacionTiempoReal> _hubContext;
         private static readonly Dictionary<string, Timer> _userTimers = new Dictionary<string, Timer>();
         private static readonly object _lockObject = new object();
 
-        public ActualizacionTiempoReal(IUnitOfWork unitOfWork, IHubContext<ActualizacionTiempoReal> hubContext)
+        public ActualizacionTiempoReal(
+            IServiceScopeFactory serviceScopeFactory,
+            IHubContext<ActualizacionTiempoReal> hubContext)
         {
-            _unitOfWork = unitOfWork;
+            _serviceScopeFactory = serviceScopeFactory;
             _hubContext = hubContext;
         }
 
@@ -107,8 +113,6 @@ namespace VelsatBackendAPI.Hubs
             }
         }
 
-        // ============= MÉTODOS DEL TIMER SIMPLIFICADOS =============
-
         private void IniciarTimer(string username)
         {
             if (string.IsNullOrEmpty(username))
@@ -116,14 +120,12 @@ namespace VelsatBackendAPI.Hubs
 
             lock (_lockObject)
             {
-                // Si ya existe un timer para este usuario, lo detenemos primero
                 if (_userTimers.ContainsKey(username))
                 {
                     _userTimers[username].Dispose();
                     _userTimers.Remove(username);
                 }
 
-                // Crear nuevo timer - USANDO EL CONTEXTO ACTUAL DEL HUB
                 var timer = new Timer(async _ => await EnviarDatosDirectamente(username),
                                     null,
                                     TimeSpan.FromSeconds(1),
@@ -151,33 +153,35 @@ namespace VelsatBackendAPI.Hubs
             }
         }
 
-        // ✅ MÉTODO SIMPLE - Sin ServiceProvider, usando las dependencias inyectadas directamente
         private async Task EnviarDatosDirectamente(string username)
         {
-            try
+            using (var scope = _serviceScopeFactory.CreateScope())
             {
-                Console.WriteLine($"[DEBUG] Obteniendo datos para: {username}");
-
-                // Usar directamente las dependencias inyectadas en el constructor
-                var datosCargaActualizados = await _unitOfWork.DatosCargainicialService.ObtenerDatosCargaInicialAsync(username);
-                datosCargaActualizados.FechaActual = DateTime.Now;
-
-                Console.WriteLine($"[DEBUG] Datos obtenidos para {username}: {datosCargaActualizados.DatosDevice?.Count ?? 0} dispositivos");
-
-                // Enviar datos usando el HubContext inyectado
-                await _hubContext.Clients.Group(username).SendAsync("ActualizarDatos", datosCargaActualizados);
-
-                Console.WriteLine($"[DEBUG] Datos enviados exitosamente para: {username}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ERROR] Error enviando datos para {username}: {ex.Message}");
-
-                // Si hay error, detener el timer para evitar spam de errores
-                if (ex.Message.Contains("disposed") || ex.Message.Contains("ObjectDisposed"))
+                try
                 {
-                    Console.WriteLine($"[WARNING] Deteniendo timer para {username} debido a disposed objects");
-                    DetenerTimer(username);
+                    Console.WriteLine($"[DEBUG] Obteniendo datos para: {username}");
+
+                    var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+                    var datosCargaActualizados = await unitOfWork.DatosCargainicialService
+                        .ObtenerDatosCargaInicialAsync(username);
+                    datosCargaActualizados.FechaActual = DateTime.Now;
+
+                    Console.WriteLine($"[DEBUG] Datos obtenidos para {username}: {datosCargaActualizados.DatosDevice?.Count ?? 0} dispositivos");
+
+                    await _hubContext.Clients.Group(username).SendAsync("ActualizarDatos", datosCargaActualizados);
+
+                    Console.WriteLine($"[DEBUG] Datos enviados exitosamente para: {username}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] Error enviando datos para {username}: {ex.Message}");
+
+                    if (ex.Message.Contains("disposed") || ex.Message.Contains("ObjectDisposed"))
+                    {
+                        Console.WriteLine($"[WARNING] Deteniendo timer para {username} debido a disposed objects");
+                        DetenerTimer(username);
+                    }
                 }
             }
         }

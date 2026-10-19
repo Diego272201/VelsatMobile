@@ -1,11 +1,16 @@
 ﻿using Dapper;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Net;
+using System.Net.Mail;
 using System.Text;
 using System.Threading.Tasks;
+using VelsatBackendAPI.Model;
 using VelsatMobile.Model;
+using VelsatMobile.Model.NotificacionesMobile;
 
 namespace VelsatMobile.Data.Repositories
 {
@@ -19,12 +24,25 @@ namespace VelsatMobile.Data.Repositories
             _defaultTransaction = defaulttransaction;
         }
 
+        public async Task<IEnumerable<Unidad>> GetUnidadesUsuario(string accountID)
+        {
+            string sql = @"
+        SELECT DISTINCT deviceID 
+        FROM (
+            SELECT deviceID FROM device WHERE accountID = @AccountID 
+            UNION ALL 
+            SELECT deviceID FROM gestion_villa.deviceuser WHERE userID = @AccountID AND Status = 1
+        ) AS combined_devices";
+
+            return await _defaultConnection.QueryAsync<Unidad>(sql, new { AccountID = accountID });
+        }
+
         //Método para obtener notificaciones de todo un usuario
         public async Task<IEnumerable<Notificaciones>> GetNotifications(string accountID)
         {
             string sql = @"Select accountID, deviceID, timestamp, statusCode, latitude, longitude, speedKPH from eventdata where accountID = @AccountID and timestamp >= UNIX_TIMESTAMP(CURDATE()) and statusCode IN (61714, 61715) order by timestamp DESC";
 
-            return await _defaultConnection.QueryAsync<Notificaciones>(sql, new { AccountID = accountID});
+            return await _defaultConnection.QueryAsync<Notificaciones>(sql, new { AccountID = accountID });
         }
 
         //Método para obtener los kilómetros recorridos en un día
@@ -45,38 +63,85 @@ namespace VelsatMobile.Data.Repositories
             return await _defaultConnection.QueryAsync<Notificaciones>(sql, new { AccountID = accountID, DeviceID = deviceID });
         }
 
-        public async Task<IEnumerable<ServicioPasajero>> ServiciosPasajeros(string codcliente)
+        //NOTIFICACIONES
+        public async Task<List<Documento>> DocumentosPorVencer(string accountID)
         {
-            string fechaActual = DateTime.Now.ToString("dd/MM/yyyy");
+            var fechaActual = DateTime.UtcNow.AddHours(-5).Date;
+            var fechaLimite = fechaActual.AddDays(30);
 
-            string sql = @"SELECT l.direccion, l.distrito, l.wy, l.wx, l.referencia, 
-                          su.fecha as fechapasajero, su.orden, 
-                          s.codservicio, s.empresa, s.numero, s.codconductor, 
-                          s.destino, s.fecha as fechaservicio, s.tipo, 
-                          s.totalpax, s.unidad, s.codusuario
-                   FROM lugarcliente l, servicio s, subservicio su
-                   WHERE l.codlugar = su.codubicli 
-                     AND su.codservicio = s.codservicio 
-                     AND su.codcliente = @Codcliente 
-                     AND s.estado <> 'C' 
-                     AND su.estado <> 'C'
-                     AND s.fecha LIKE @Fecha";
-
-            return await _defaultConnection.QueryAsync<ServicioPasajero>(sql, new { Codcliente = codcliente, Fecha = fechaActual + "%" });
+            const string sql = @"SELECT * FROM documentos WHERE Fecha_vencimiento IS NOT NULL AND Fecha_vencimiento <= @FechaLimite AND accountID = @AccountID ORDER BY Fecha_vencimiento ASC";
+            try
+            {
+                var documentos = await _defaultConnection.QueryAsync<Documento>(sql, new
+                {
+                    FechaLimite = fechaLimite,
+                    AccountID = accountID
+                }, transaction: _defaultTransaction);
+                return documentos.ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error al obtener documentos próximos a vencer");
+                return new List<Documento>();
+            }
         }
 
-        public async Task<IEnumerable<DetalleDestino>> GetDetalleDestino(string codcliente)
+        public async Task<bool> SaveFCMTokenAsync(string userId, string fcmToken, string platform)
         {
-            string sql = @"SELECT c.apellidos, c.nombres, l.direccion, l.distrito, l.wy, l.wx FROM cliente c, lugarcliente l WHERE c.codlugar = l.codcli AND c.codcliente = @Codcliente AND l.estado = 'A'";
+            // Verificar si ya existe exactamente ese userId + token
+            string sqlCheck = @"SELECT COUNT(1) FROM UserFCMTokens 
+                        WHERE UserId = @UserId AND FCMToken = @FCMToken";
 
-            return await _defaultConnection.QueryAsync<DetalleDestino>(sql, new { Codcliente = codcliente });
+            int exists = await _defaultConnection.ExecuteScalarAsync<int>(
+                sqlCheck,
+                new { UserId = userId, FCMToken = fcmToken },
+                transaction: _defaultTransaction
+            );
+
+            if (exists > 0)
+                return true; // Ya existe, no hacer nada
+
+            // No existe → INSERT (nuevo dispositivo o token cambió)
+            string sqlInsert = @"INSERT INTO UserFCMTokens 
+                         (UserId, FCMToken, Platform, CreatedAt, UpdatedAt)
+                         VALUES (@UserId, @FCMToken, @Platform, NOW(), NOW())";
+
+            int rows = await _defaultConnection.ExecuteAsync(
+                sqlInsert,
+                new { UserId = userId, FCMToken = fcmToken, Platform = platform },
+                transaction: _defaultTransaction
+            );
+
+            return rows > 0;
         }
 
-        public async Task<DetalleConductor> GetDetalleConductor(string codtaxi)
+        // Necesitas este método para obtener todos los usuarios con token
+        public async Task<IEnumerable<UserFCMToken>> GetAllUserFCMTokensAsync()
         {
-            string sql = @"SELECT apellidos, nombres, telefono, dni, calificacion FROM taxi WHERE codtaxi = @Codtaxi";
+            string sql = @"SELECT Id, userId, fcmtoken, platform, createdAt, updatedAt FROM userfcmtokens";
 
-            return await _defaultConnection.QueryFirstOrDefaultAsync<DetalleConductor>(sql, new { Codtaxi = codtaxi });
+            return await _defaultConnection.QueryAsync<UserFCMToken>(
+                sql,
+                transaction: _defaultTransaction
+            );
+        }
+
+        public async Task<int> ActualizarDeviceServicio(string deviceID, string codservicio)
+        {
+            string sql = @"UPDATE device SET servicio = @Codservicio WHERE deviceID = @DeviceID";
+
+            return await _defaultConnection.ExecuteAsync(sql,
+                new { Codservicio = codservicio, DeviceID = deviceID },
+                transaction: _defaultTransaction);
+        }
+
+        public async Task<int> ActualizarDeviceFinServicio(string deviceID)
+        {
+            string sql = @"UPDATE device SET servicio = NULL WHERE deviceID = @DeviceID";
+
+            return await _defaultConnection.ExecuteAsync(sql,
+                new { DeviceID = deviceID },
+                transaction: _defaultTransaction);
         }
     }
 }

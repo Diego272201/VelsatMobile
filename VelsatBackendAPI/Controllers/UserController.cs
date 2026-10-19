@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using VelsatBackendAPI.Data.Repositories;
 using VelsatBackendAPI.Model;
+using VelsatMobile.Data.Repositories;
 
 namespace VelsatBackendAPI.Controllers
 {
@@ -9,13 +10,14 @@ namespace VelsatBackendAPI.Controllers
     [ApiController]
     public class UserController : ControllerBase
     {
-        private readonly IUnitOfWork _unitOfWork;
+        private readonly IReadOnlyUnitOfWork _readOnlyUow; // ✅ Cambiar a ReadOnly
+        private readonly IUnitOfWork _uow;
 
-        public UserController(IUnitOfWork unitOfWork)
+        public UserController(IReadOnlyUnitOfWork readOnlyUow, IUnitOfWork uow) // ✅ Cambiar
         {
-            _unitOfWork = unitOfWork;
+            _readOnlyUow = readOnlyUow;
+            _uow = uow;
         }
-        
 
         [HttpGet("MobileDetailsUser")]
         public async Task<IActionResult> GetDetails([FromQuery] string accountID, [FromQuery] char tipo)
@@ -32,7 +34,7 @@ namespace VelsatBackendAPI.Controllers
 
             try
             {
-                var details = await _unitOfWork.UserRepository.GetDetails(accountID, tipo);
+                var details = await _readOnlyUow.UserRepository.GetDetails(accountID, tipo);
 
                 if (details == null)
                 {
@@ -68,7 +70,9 @@ namespace VelsatBackendAPI.Controllers
 
             try
             {
-                var success = await _unitOfWork.UserRepository.UpdateUser(account, account.AccountID, tipo);
+                var success = await _uow.UserRepository.UpdateUser(account, tipo);
+
+                _uow.SaveChanges();
 
                 if (success)
                 {
@@ -104,7 +108,9 @@ namespace VelsatBackendAPI.Controllers
 
             try
             {
-                var success = await _unitOfWork.UserRepository.UpdatePassword(username, password, tipo);
+                var success = await _uow.UserRepository.UpdatePassword(username, password, tipo);
+
+                _uow.SaveChanges();
 
                 if (success)
                 {

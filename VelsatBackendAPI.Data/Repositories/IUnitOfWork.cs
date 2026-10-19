@@ -21,5 +21,8 @@ namespace VelsatBackendAPI.Data.Repositories
         IServidorRepository ServidorRepository { get; }
 
         IAplicativoRepository AplicativoRepository { get; }
+
+        void SaveChanges();
+
     }
 }

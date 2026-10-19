@@ -126,8 +126,7 @@ namespace VelsatBackendAPI.Data.Repositories
                 if (nombresTablas.Count == 0)
                 {
                     // Consultar directamente la tabla "eventdata"
-                    string sqlEventData = $"select deviceID, MAX(odometerKM) AS maximo, MIN(odometerKM) AS minimo " +
-                        $"from eventdata where deviceID in (select deviceID from device where accountID=@AccountID) and timestamp between @FechainiUnix and @FechafinUnix group by deviceID";
+                    string sqlEventData = $@"select deviceID, MAX(odometerKM) AS maximo, MIN(odometerKM) AS minimo, (MAX(odometerKM) - MIN(odometerKM)) as kilometros from eventdata where deviceID in (select deviceID from device where accountID=@AccountID) and timestamp between @FechainiUnix and @FechafinUnix group by deviceID";
 
 
                     var parameters = new DynamicParameters();
@@ -144,8 +143,7 @@ namespace VelsatBackendAPI.Data.Repositories
                         string consultaTabla = nombreTabla.Tabla;
 
                         // Consultar cada tabla histórica
-                        string sqlR = $"select deviceID, MAX(odometerKM) AS maximo, MIN(odometerKM) AS minimo " +
-                            $"from {consultaTabla} where deviceID in (select deviceID from gts.device where accountID=@AccountID) and timestamp between @FechainiUnix and @FechafinUnix group by deviceID";
+                        string sqlR = $@"select deviceID, MAX(odometerKM) AS maximo, MIN(odometerKM) AS minimo, (MAX(odometerKM) - MIN(odometerKM)) as kilometros from {consultaTabla} where deviceID in (select deviceID from gestion_villa.device where accountID=@AccountID) and timestamp between @FechainiUnix and @FechafinUnix group by deviceID";
 
                         var parameters = new DynamicParameters();
                         parameters.Add("FechainiUnix", resultadoDias.UnixFechaInicio);
